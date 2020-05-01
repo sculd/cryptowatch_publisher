@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
     "io/ioutil"
-	"log"
 	"os"
     "strconv"
     "sync/atomic"
@@ -37,7 +36,7 @@ func main() {
 
     exchangesMapFile, err := os.Open("exchanges.json")
     if err != nil {
-        log.Printf("%v", err)
+        fmt.Printf("%v\n", err)
         return
     }
     defer exchangesMapFile.Close()
@@ -45,7 +44,7 @@ func main() {
 
     marketsMapFile, err := os.Open("markets.json")
     if err != nil {
-        log.Printf("%v", err)
+        fmt.Printf("%v\n", err)
         return
     }
     defer marketsMapFile.Close()
@@ -56,10 +55,10 @@ func main() {
 	json.Unmarshal(exchangesMapByteValue, &id_to_symbol_exchanges)
 	exchange, ok := id_to_symbol_exchanges[exchange_id] 
 	if !ok {
-		log.Printf("exchange id: %s is not found.", exchange_id)
+		fmt.Printf("exchange id: %s is not found.\n", exchange_id)
 		return
 	}
-	log.Printf(exchange)
+	fmt.Println(exchange)
 
 	var id_to_symbol_markets map[string]string
 	json.Unmarshal(marketsMapByteValue, &id_to_symbol_markets)
@@ -114,7 +113,8 @@ func main() {
 	for {
 		_, message, err := c.ReadMessage()
 		if err != nil {
-			log.Fatal("Error reading from connection", err)
+			fmt.Println("Error reading from connection")
+			fmt.Println(err.Error())
 			return
 		}
 
@@ -131,7 +131,7 @@ func main() {
 
 		symbol, ok  := id_to_symbol_markets[market_symbol]
 		if !ok {
-			log.Printf("market id: %d is not found. Update: %v", update.MarketUpdate.Market.MarketId, update)
+			fmt.Printf("market id: %d is not found. Update: %v\n", update.MarketUpdate.Market.MarketId, update)
 			continue
 		}
 
@@ -142,13 +142,13 @@ func main() {
 
 		    msg, err := json.Marshal(interval.ToBar(exchange, symbol))
 		    if err != nil {
-				log.Printf("Failed to marshall json: %v", err)
+				fmt.Printf("Failed to marshall json: %v\n", err)
 		        continue
 		    }
 		    msg_str := string(msg) 
 
-			log.Printf(
-				"ohlc on market %d, interval: %v, msg: %v",
+			fmt.Printf(
+				"ohlc on market %d, interval: %v, msg: %v\n",
 				update.MarketUpdate.Market.MarketId,
 				interval,
 				msg_str,
@@ -164,7 +164,7 @@ func main() {
 				_, err := res.Get(ctx)
 				if err != nil {
 					// Error handling code can be added here.
-					log.Printf("Failed to publish: %v", err)
+					fmt.Printf("Failed to publish: %v\n", err)
 					atomic.AddUint64(&totalErrors, 1)
 					return
 				}
