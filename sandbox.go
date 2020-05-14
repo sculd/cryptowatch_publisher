@@ -1,15 +1,15 @@
 package main
 
 import (
-    "context"
+    //"context"
     "encoding/json"
     "fmt"
     "io/ioutil"
     "os"
-    "strconv"
-    "sync/atomic"
+    //"strconv"
+    //"sync/atomic"
 
-    "cloud.google.com/go/pubsub"
+    //"cloud.google.com/go/pubsub"
     "github.com/gorilla/websocket"
 )
 
@@ -70,6 +70,7 @@ func main() {
     defer c.Close()
 
     // pubsub init
+    /*
     ctx := context.Background()
     client, err := pubsub.NewClient(ctx, PROJECT_ID)
     if err != nil {
@@ -78,6 +79,7 @@ func main() {
     }
     var totalErrors uint64
     topic := client.Topic(TOPIC_ID)
+    */
 
     // Read first message, which should be an authentication response
     _, message, err := c.ReadMessage()
@@ -94,7 +96,7 @@ func main() {
     // Send a JSON payload to subscribe to a list of resources
     // Read more about resources here: https://docs.cryptowat.ch/websocket-api/data-subscriptions#resources
     resources := []string{
-        fmt.Sprintf("exchanges:%s:ohlc", exchange_id),
+        fmt.Sprintf("exchanges:%s:book:deltas", exchange_id),
     }
     subMessage := struct {
         Subscribe SubscribeRequest `json:"subscribe"`
@@ -109,7 +111,6 @@ func main() {
         panic(err)
     }
 
-    // Process incoming BTC/USD trades
     for {
         _, message, err := c.ReadMessage()
         if err != nil {
@@ -118,58 +119,15 @@ func main() {
             return
         }
 
+        fmt.Printf("%v", message)
+        /*
         var update Update
         err = json.Unmarshal(message, &update)
         if err != nil {
             panic(err)
         }
+        */
 
-        market_symbol := strconv.FormatInt(int64(update.MarketUpdate.Market.MarketId), 10)
-        if market_symbol == "0" {
-            continue
-        }
-
-        symbol, ok  := id_to_symbol_markets[market_symbol]
-        if !ok {
-            fmt.Printf("market id: %d is not found. Update: %v\n", update.MarketUpdate.Market.MarketId, update)
-            continue
-        }
-
-        for _, interval := range update.MarketUpdate.IntervalsUpdate.Intervals {
-            if interval.PeriodName != "60" {
-                continue
-            }
-
-            msg, err := json.Marshal(interval.ToBar(exchange, symbol))
-            if err != nil {
-                fmt.Printf("Failed to marshall json: %v\n", err)
-                continue
-            }
-            msg_str := string(msg) 
-
-            fmt.Printf(
-                "ohlc on market %d, interval: %v, msg: %v\n",
-                update.MarketUpdate.Market.MarketId,
-                interval,
-                msg_str,
-            )
-
-            publish_result := topic.Publish(ctx, &pubsub.Message{
-                Data: []byte(msg_str),
-            })
-
-            go func(res *pubsub.PublishResult) {
-                // The Get method blocks until a server-generated ID or
-                // an error is returned for the published message.
-                _, err := res.Get(ctx)
-                if err != nil {
-                    // Error handling code can be added here.
-                    fmt.Printf("Failed to publish: %v\n", err)
-                    atomic.AddUint64(&totalErrors, 1)
-                    return
-                }
-            }(publish_result)
-        }
     }
 }
 
@@ -193,27 +151,51 @@ type Update struct {
             MarketId int `json:"marketId,string"`
         } `json:"market"`
 
-        IntervalsUpdate struct {
-            Intervals []Interval `json:"intervals"`
-        } `json:"intervalsUpdate"`
+        OrderBookDeltaUpdate OrderBookDelta `json:"orderBookDeltaUpdate"`
     } `json:"marketUpdate"`
 }
 
-type Interval struct {
-    Closetime  int    `json:"closetime,string"`
-    PeriodName string `json:"periodName"`
+type SeqNum uint32
 
-    Ohlc struct {
-        OpenStr  string `json:"openStr"`
-        HighStr  string `json:"highStr"`
-        LowStr   string `json:"lowStr"`
-        CloseStr string `json:"closeStr"`
-    } `json:"ohlc"`
+// OrderBookDelta represents an order book delta update, which is
+// the minimum amount of data necessary to keep a local order book up to date.
+// Since order book snapshots are throttled at 1 per minute, subscribing to
+// the delta updates is the best way to keep an order book up to date.
+type OrderBookDelta struct {
+  // SeqNum is used to make sure deltas are processed in order.
+  // See the SeqNum definition for more information.
+  SeqNum SeqNum
 
-    VolumeBaseStr  string `json:"volumeBaseStr"`
-    VolumeQuoteStr string `json:"volumeQuoteStr"`
+  Bids OrderDeltas
+  Asks OrderDeltas
 }
 
+// Empty returns whether OrderBookDelta doesn't contain any deltas for bids and
+// asks.
+func (delta OrderBookDelta) Empty() bool {
+  return delta.Bids.Empty() && delta.Asks.Empty()
+}
+
+// OrderDeltas are used to update an order book, either by setting (adding)
+// new PublicOrders, or removing orders at specific prices.
+type OrderDeltas struct {
+  // Set is a list of orders used to add or replace orders on an order book.
+  // Each order in Set is guaranteed to be a different price. For each of them,
+  // if the order at that price exists on the book, replace it. If an order
+  // at that price does not exist, add it to the book.
+  Set []PublicOrder
+
+  // Remove is a list of prices. To apply to an order book, remove all orders
+  // of that price from that book.
+  Remove []decimal.Decimal
+}
+
+// Empty returns whether the OrderDeltas doesn't contain any deltas.
+func (d OrderDeltas) Empty() bool {
+  return len(d.Set) == 0 && len(d.Remove) == 0
+}
+
+/*
 func marketIdToSymbol(i int) (string, error) {
     return "bar", nil
 }
@@ -236,3 +218,4 @@ type Bar struct {
     VolumeBaseStr  string `json:"volumeBaseStr"`
     VolumeQuoteStr string `json:"volumeQuoteStr"`
 }
+*/
