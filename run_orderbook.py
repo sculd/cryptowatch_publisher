@@ -137,6 +137,7 @@ if __name__ == '__main__':
     for exchange, markets in exchange_markets.items():
         if exchange != 'kraken': continue
         for market in markets:
+            if 'btc' not in market and 'eth' not in market and 'ltc' not in market: continue
             th = thread_publish_cum_volume_quote_marks(exchange, market)
             th.start()
             '''
